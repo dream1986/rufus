@@ -1,7 +1,7 @@
 /*
  * Rufus: The Reliable USB Formatting Utility
  * SMART HDD vs Flash detection - isHDD() tables
- * Copyright © 2013-2019 Pete Batard <pete@akeo.ie>
+ * Copyright © 2013-2021 Pete Batard <pete@akeo.ie>
  *
  * Based in part on drivedb.h from Smartmontools:
  * http://svn.code.sf.net/p/smartmontools/code/trunk/smartmontools/drivedb.h
@@ -89,7 +89,9 @@ static str_score_t str_score[] = {
 
 static str_score_t str_adjust[] = {
 	{ "Gadget", -10 },
-	{ "Flash", -10 }
+	{ "Flash", -10 },
+	{ "HDD", +20 },
+	{ "SSD", +20 }
 };
 
 /* The lists belows set a score according to VID & VID:PID
@@ -136,6 +138,7 @@ static vid_score_t vid_score[] = {
 	{ 0x09da, -5 },		// A4 Tech
 	{ 0x0b27, -5 },		// Ritek
 	{ 0x0bc2, 10 },		// Seagate
+	{ 0x0bda, -10 },	// Realtek
 	{ 0x0c76, -5 },		// JMTek
 	{ 0x0cf2, -5 },		// ENE
 	{ 0x0d49, 10 },		// Maxtor
@@ -166,6 +169,7 @@ static vid_score_t vid_score[] = {
 	{ 0x1f75, -2 },		// Innostor
 	{ 0x2001, -5 },		// Micov
 	{ 0x201e, -5 },		// Evdo
+	{ 0x2109, 10 },		// VIA Labs
 	{ 0x2188, -5 },		// SMI
 	{ 0x3538, -5 },		// PQI
 	{ 0x413c, -5 },		// Ameco
@@ -261,6 +265,8 @@ static vidpid_score_t vidpid_score[] = {
 	{ 0x05ac, 0x8405, -20},
 	{ 0x05ac, 0x8406, -20},
 	{ 0x05ac, 0x8407, -20},
+	// No idea who these guys are. They don't exist in usb.ids.
+	{ 0x6557, 0x0021, -5},
 	// Prolific exceptions
 	{ 0x067b, 0x2506, -20 },	// 8 GB Micro Hard Drive
 	{ 0x067b, 0x2517, -20 },	// 1 GB UFD
@@ -269,6 +275,8 @@ static vidpid_score_t vidpid_score[] = {
 	{ 0x067b, 0x2733, -20 },	// EAGET Mass Storage USB Device
 	{ 0x067b, 0x3400, -10 },	// Hi-Speed Flash Disk with TruePrint AES3400
 	{ 0x067b, 0x3500, -10 },	// Hi-Speed Flash Disk with TruePrint AES3500
+	// Sandisk exceptions
+	{ 0x0781, 0x5580, -20 },
 	// Freecom exceptions
 	{ 0x07ab, 0xfcab, -20 },	// 4 GB UFD
 	// Samsung exceptions

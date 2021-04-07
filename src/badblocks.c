@@ -408,7 +408,8 @@ static unsigned int test_rw(HANDLE hDrive, blk64_t last_block, size_t block_size
 							size_t blocks_at_once, int pattern_type, int nb_passes)
 {
 	const unsigned int pattern[BADLOCKS_PATTERN_TYPES][BADBLOCK_PATTERN_COUNT] =
-		{ BADBLOCK_PATTERN_SLC, BADCLOCK_PATTERN_MLC, BADBLOCK_PATTERN_TLC };
+		{ BADBLOCK_PATTERN_ONE_PASS, BADBLOCK_PATTERN_TWO_PASSES, BADBLOCK_PATTERN_SLC,
+		  BADCLOCK_PATTERN_MLC, BADBLOCK_PATTERN_TLC };
 	unsigned char *buffer = NULL, *read_buffer;
 	int i, pat_idx;
 	unsigned int bb_count = 0;
@@ -427,13 +428,12 @@ static unsigned int test_rw(HANDLE hDrive, blk64_t last_block, size_t block_size
 	}
 
 	buffer = allocate_buffer(2 * blocks_at_once * block_size);
-	read_buffer = buffer + blocks_at_once * block_size;
-
 	if (!buffer) {
 		uprintf("%sError while allocating buffers\n", bb_prefix);
 		cancel_ops = -1;
 		return 0;
 	}
+	read_buffer = buffer + blocks_at_once * block_size;
 
 	uprintf("%sChecking from block %lu to %lu (1 block = %s)\n", bb_prefix,
 		(unsigned long) first_block, (unsigned long) last_block - 1,
@@ -463,7 +463,7 @@ static unsigned int test_rw(HANDLE hDrive, blk64_t last_block, size_t block_size
 			if (max_bb && bb_count >= max_bb) {
 				if (s_flag || v_flag) {
 					uprintf(abort_msg);
-					fprintf(log_fd, abort_msg);
+					fprintf(log_fd, "%s", abort_msg);
 					fflush(log_fd);
 				}
 				cancel_ops = -1;
@@ -511,7 +511,7 @@ static unsigned int test_rw(HANDLE hDrive, blk64_t last_block, size_t block_size
 			if (max_bb && bb_count >= max_bb) {
 				if (s_flag || v_flag) {
 					uprintf(abort_msg);
-					fprintf(log_fd, abort_msg);
+					fprintf(log_fd, "%s", abort_msg);
 					fflush(log_fd);
 				}
 				cancel_ops = -1;

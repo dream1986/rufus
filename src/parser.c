@@ -1,7 +1,7 @@
 /*
  * Rufus: The Reliable USB Formatting Utility
  * Elementary Unicode compliant find/replace parser
- * Copyright © 2012-2018 Pete Batard <pete@akeo.ie>
+ * Copyright © 2012-2020 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -646,7 +646,7 @@ char* get_token_data_file_indexed(const char* token, const char* filename, int i
 		goto out;
 	}
 	wtoken = utf8_to_wchar(token);
-	if (wfilename == NULL) {
+	if (wtoken == NULL) {
 		uprintf(conversion_error, token);
 		goto out;
 	}
@@ -695,7 +695,7 @@ char* set_token_data_file(const char* token, const char* data, const char* filen
 		goto out;
 	}
 	wtoken = utf8_to_wchar(token);
-	if (wfilename == NULL) {
+	if (wtoken == NULL) {
 		uprintf(conversion_error, token);
 		goto out;
 	}
@@ -974,7 +974,7 @@ char* insert_section_data(const char* filename, const char* section, const char*
 		goto out;
 	}
 	wsection = utf8_to_wchar(section);
-	if (wfilename == NULL) {
+	if (wsection == NULL) {
 		uprintf(conversion_error, section);
 		goto out;
 	}
@@ -1087,19 +1087,20 @@ out:
  * Returns a pointer to rep if replacement occurred, NULL otherwise
  * TODO: We might have to end up with a regexp engine, so that we can do stuff like: "foo*" -> "bar\1"
  */
+#define MAX_OCCURRENCES 4
 char* replace_in_token_data(const char* filename, const char* token, const char* src, const char* rep, BOOL dos2unix)
 {
 	const wchar_t* outmode[] = { L"w", L"w, ccs=UTF-8", L"w, ccs=UTF-16LE" };
 	wchar_t *wtoken = NULL, *wfilename = NULL, *wtmpname = NULL, *wsrc = NULL, *wrep = NULL, bom = 0;
-	wchar_t buf[1024], *torep;
+	wchar_t buf[1024], *torep[MAX_OCCURRENCES + 1] = { NULL };
 	FILE *fd_in = NULL, *fd_out = NULL;
-	size_t i, ns, size;
+	size_t i, j, p[MAX_OCCURRENCES + 1] = { 0 }, ns, size;
 	int mode = 0;
 	char *ret = NULL, tmp[2];
 
 	if ((filename == NULL) || (token == NULL) || (src == NULL) || (rep == NULL))
 		return NULL;
-	if ((filename[0] == 0) || (token[0] == 0) || (src[0] == 0) || (rep[0] == 0))
+	if ((filename[0] == 0) || (token[0] == 0) || (src[0] == 0))
 		return NULL;
 	if (strcmp(src, rep) == 0)	// No need for processing is source is same as replacement
 		return NULL;
@@ -1110,7 +1111,7 @@ char* replace_in_token_data(const char* filename, const char* token, const char*
 		goto out;
 	}
 	wtoken = utf8_to_wchar(token);
-	if (wfilename == NULL) {
+	if (wtoken == NULL) {
 		uprintf(conversion_error, token);
 		goto out;
 	}
@@ -1120,7 +1121,7 @@ char* replace_in_token_data(const char* filename, const char* token, const char*
 		goto out;
 	}
 	wrep = utf8_to_wchar(rep);
-	if (wsrc == NULL) {
+	if (wrep == NULL) {
 		uprintf(conversion_error, rep);
 		goto out;
 	}
@@ -1150,7 +1151,6 @@ char* replace_in_token_data(const char* filename, const char* token, const char*
 	fseek(fd_in, 0, SEEK_SET);
 //	duprintf("'%s' was detected as %s\n", filename,
 //		(mode==0)?"ANSI/UTF8 (no BOM)":((mode==1)?"UTF8 (with BOM)":"UTF16 (with BOM"));
-
 
 	wtmpname = (wchar_t*)calloc(wcslen(wfilename)+2, sizeof(wchar_t));
 	if (wtmpname == NULL) {
@@ -1189,16 +1189,34 @@ char* replace_in_token_data(const char* filename, const char* token, const char*
 			continue;
 		i += ns;
 
-		torep = wcsstr(&buf[i], wsrc);
-		if (torep == NULL) {
+		// p[x] = starting position of the fragment with the replaceable string
+		p[0] = 0;
+		for (j = 0; j < MAX_OCCURRENCES; j++) {
+			torep[j] = wcsstr(&buf[i], wsrc);
+			if (torep[j] == NULL)
+				break;
+			// Next fragment will start after current + replaced string
+			i = (torep[j] - buf) + wcslen(wsrc);
+			p[j + 1] = i;
+			// Truncate each fragment to before the replaced string
+			*torep[j] = 0;
+		}
+
+		// No replaceable string found => output as is
+		if (torep[0] == NULL) {
 			fputws(buf, fd_out);
 			continue;
 		}
 
-		i = (torep-buf) + wcslen(wsrc);
-		*torep = 0;
+		// Output all the truncated fragments + replaced strings
+		for (j = 0; torep[j] != NULL; j++)
+			// coverity[invalid_type]
+			fwprintf_s(fd_out, L"%s%s", &buf[p[j]], wrep);
+
+		// Ouput the last fragment
 		// coverity[invalid_type]
-		fwprintf_s(fd_out, L"%s%s%s", buf, wrep, &buf[i]);
+		fwprintf_s(fd_out, L"%s", &buf[p[j]]);
+
 		ret = (char*)rep;
 	}
 

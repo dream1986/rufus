@@ -1,7 +1,7 @@
 /*
  * Rufus: The Reliable USB Formatting Utility
  * UI-related function calls
- * Copyright © 2018-2019 Pete Batard <pete@akeo.ie>
+ * Copyright © 2018-2021 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <oleacc.h>
 #include <winioctl.h>
 #include <assert.h>
 
@@ -43,7 +44,7 @@
 
 UINT_PTR UM_LANGUAGE_MENU_MAX = UM_LANGUAGE_MENU;
 HIMAGELIST hUpImageList, hDownImageList;
-extern BOOL enable_fido, use_vds;
+extern BOOL use_vds, appstore_version;
 int update_progress_type = UPT_PERCENT;
 int advanced_device_section_height, advanced_format_section_height;
 // (empty) check box width, (empty) drop down width, button height (for and without dropdown match)
@@ -54,6 +55,7 @@ static int rh, ddh, bw, hw, fw;
 static int sw, mw, bsw, sbw, ssw, tw, dbw;
 static WNDPROC progress_original_proc = NULL;
 static wchar_t wtbtext[2][128];
+static IAccPropServices* pfaps = NULL;
 
 /*
  * The following is used to allocate slots within the progress bar
@@ -66,6 +68,21 @@ static wchar_t wtbtext[2][128];
 static int nb_slots[OP_MAX];
 static float slot_end[OP_MAX+1];	// shifted +1 so that we can subtract 1 to OP indexes
 static float previous_end;
+
+void SetAccessibleName(HWND hCtrl, const char* name)
+{
+	const MSAAPROPID props[] = { Name_Property_GUID };
+	wchar_t* wname = utf8_to_wchar(name);
+
+	SetWindowTextW(hCtrl, wname);
+	if (pfaps == NULL)
+		IGNORE_RETVAL(CoCreateInstance(&CLSID_AccPropServices, NULL, CLSCTX_INPROC, &IID_IAccPropServices, (LPVOID)&pfaps));
+	if (pfaps != NULL) {
+		IAccPropServices_ClearHwndProps(pfaps, hCtrl, OBJID_CLIENT, CHILDID_SELF, props, ARRAYSIZE(props));
+		IAccPropServices_SetHwndPropStr(pfaps, hCtrl, OBJID_CLIENT, CHILDID_SELF, Name_Property_GUID, wname);
+	}
+	free(wname);
+}
 
 // Set the combo selection according to the data
 void SetComboEntry(HWND hDlg, int data)
@@ -149,7 +166,6 @@ void GetMainButtonsWidth(HWND hDlg)
 {
 	unsigned int i;
 	RECT rc;
-	LONG style;
 	char download[64];
 
 	GetWindowRect(GetDlgItem(hDlg, main_button_ids[0]), &rc);
@@ -158,19 +174,14 @@ void GetMainButtonsWidth(HWND hDlg)
 
 	for (i = 0; i < ARRAYSIZE(main_button_ids); i++) {
 		// Make sure we add extra space for the SELECT split button (i == 0) if Fido is enabled
-		bw = max(bw, GetTextWidth(hDlg, main_button_ids[i]) + ((enable_fido && i == 0) ? (3 * cbw) / 2 : cbw));
+		bw = max(bw, GetTextWidth(hDlg, main_button_ids[i]) + ((i == 0) ? (3 * cbw) / 2 : cbw));
 	}
 	// The 'CLOSE' button is also be used to display 'CANCEL' and we sometimes
 	// want to add "DOWNLOAD" into the Select split button => measure that too.
 	bw = max(bw, GetTextSize(GetDlgItem(hDlg, IDCANCEL), lmprintf(MSG_007)).cx + cbw);
-	if (enable_fido) {
-		static_strcpy(download, lmprintf(MSG_040));
-		CharUpperBuffU(download, sizeof(download));
-		bw = max(bw, GetTextSize(GetDlgItem(hDlg, IDC_SELECT), download).cx + (3 * cbw) / 2);
-		style = GetWindowLong(GetDlgItem(hDlg, IDC_SELECT), GWL_STYLE);
-		style|= BS_SPLITBUTTON;
-		SetWindowLong(GetDlgItem(hDlg, IDC_SELECT), GWL_STYLE, style);
-	}
+	static_strcpy(download, lmprintf(MSG_040));
+	CharUpperBuffU(download, sizeof(download));
+	bw = max(bw, GetTextSize(GetDlgItem(hDlg, IDC_SELECT), download).cx + (3 * cbw) / 2);
 }
 
 // The following goes over the data that gets populated into the half-width dropdowns
@@ -260,8 +271,8 @@ void GetFullWidth(HWND hDlg)
 	fw = rc.right - rc.left - ddw;
 
 	// Go through the Image Options for Windows To Go
-	fw = max(fw, GetTextSize(GetDlgItem(hDlg, IDC_IMAGE_OPTION), lmprintf(MSG_117)).cx);
-	fw = max(fw, GetTextSize(GetDlgItem(hDlg, IDC_IMAGE_OPTION), lmprintf(MSG_118)).cx);
+	fw = max(fw, GetTextSize(hImageOption, lmprintf(MSG_117)).cx);
+	fw = max(fw, GetTextSize(hImageOption, lmprintf(MSG_118)).cx);
 
 	// Now deal with full length checkbox lines
 	for (i = 0; i<ARRAYSIZE(full_width_checkboxes); i++)
@@ -417,7 +428,7 @@ void PositionMainControls(HWND hDlg)
 	hCtrl = GetDlgItem(hDlg, IDC_PERSISTENCE_SLIDER);
 	GetWindowRect(hCtrl, &rc);
 	MapWindowPoints(NULL, hDlg, (POINT*)&rc, 2);
-	SetWindowPos(hCtrl, GetDlgItem(hDlg, IDC_IMAGE_OPTION), mw, rc.top, bsw, rc.bottom - rc.top, 0);
+	SetWindowPos(hCtrl, hImageOption, mw, rc.top, bsw, rc.bottom - rc.top, 0);
 
 	// Reposition the Persistence Units dropdown (no need to resize)
 	hCtrl = GetDlgItem(hDlg, IDC_PERSISTENCE_UNITS);
@@ -444,7 +455,7 @@ void PositionMainControls(HWND hDlg)
 		// Still need to adjust the width of the device selection dropdown
 		GetWindowRect(hDeviceList, &rc);
 		MapWindowPoints(NULL, hMainDialog, (POINT*)&rc, 2);
-		SetWindowPos(hDeviceList, HWND_TOP, rc.left, rc.top, fw - ssw - sbw, rc.bottom - rc.top, 0);
+		SetWindowPos(hDeviceList, GetDlgItem(hDlg, IDS_DEVICE_TXT), rc.left, rc.top, fw - ssw - sbw, rc.bottom - rc.top, 0);
 	}
 
 	// Resize the full width controls
@@ -561,7 +572,7 @@ void SetSectionHeaders(HWND hDlg)
 		SendDlgItemMessageA(hDlg, section_control_ids[i], WM_SETFONT, (WPARAM)hf, TRUE);
 		hCtrl = GetDlgItem(hDlg, section_control_ids[i]);
 		memset(wtmp, 0, sizeof(wtmp));
-		GetWindowTextW(hCtrl, wtmp, ARRAYSIZE(wtmp));
+		GetWindowTextW(hCtrl, wtmp, ARRAYSIZE(wtmp) - 3);
 		wlen = wcslen(wtmp);
 		wtmp[wlen++] = L' ';
 		wtmp[wlen++] = L' ';
@@ -611,7 +622,7 @@ void ToggleAdvancedDeviceOptions(BOOL enable)
 
 	GetWindowRect(hDeviceList, &rc);
 	MapWindowPoints(NULL, hMainDialog, (POINT*)&rc, 2);
-	SetWindowPos(hDeviceList, HWND_TOP, rc.left, rc.top, enable ? fw - ssw - sbw : fw, rc.bottom - rc.top, 0);
+	SetWindowPos(hDeviceList, GetDlgItem(hMainDialog, IDS_DEVICE_TXT), rc.left, rc.top, enable ? fw - ssw - sbw : fw, rc.bottom - rc.top, 0);
 
 	// Resize the main dialog and log window
 	ResizeDialogs(shift);
@@ -660,7 +671,7 @@ void ToggleAdvancedFormatOptions(BOOL enable)
 	InvalidateRect(hMainDialog, NULL, TRUE);
 }
 
-// Toggle the display of peristence unit dropdown and resize the size field
+// Toggle the display of persistence unit dropdown and resize the size field
 void TogglePersistenceControls(BOOL display)
 {
 	RECT rc;
@@ -736,12 +747,15 @@ void SetPersistenceSize(void)
 			persistence_unit_selection = proposed_unit_selection;
 
 		IGNORE_RETVAL(ComboBox_SetCurSel(hCtrl, persistence_unit_selection));
+		if ((pos != 0) && (pos < MIN_EXT_SIZE))
+			pos = MIN_EXT_SIZE;
 		pos /= MB;
 		max /= MB;
 		for (i = 0; i < persistence_unit_selection; i++) {
 			pos /= 1024;
 			max /= 1024;
 		}
+
 	}
 
 	hCtrl = GetDlgItem(hMainDialog, IDC_PERSISTENCE_SLIDER);
@@ -761,7 +775,8 @@ void ToggleImageOptions(void)
 	uint8_t entry_image_options = image_options;
 	int i, shift = rh;
 
-	has_wintogo = ((boot_type == BT_IMAGE) && (image_path != NULL) && (img_report.is_iso) && (nWindowsVersion >= WINDOWS_8) && (HAS_WINTOGO(img_report)));
+	has_wintogo = ((boot_type == BT_IMAGE) && (image_path != NULL) && (img_report.is_iso || img_report.is_windows_img) &&
+		(nWindowsVersion >= WINDOWS_8) && (HAS_WINTOGO(img_report)));
 	has_persistence = ((boot_type == BT_IMAGE) && (image_path != NULL) && (img_report.is_iso) && (HAS_PERSISTENCE(img_report)));
 
 	assert(popcnt8(image_options) <= 1);
@@ -773,13 +788,20 @@ void ToggleImageOptions(void)
 	if ( ((has_wintogo) && !(image_options & IMOP_WINTOGO)) ||
 		 ((!has_wintogo) && (image_options & IMOP_WINTOGO)) ) {
 		image_options ^= IMOP_WINTOGO;
-		// Set the Windows To Go selection in the dropdown
-		IGNORE_RETVAL(ComboBox_SetCurSel(GetDlgItem(hMainDialog, IDC_IMAGE_OPTION), windows_to_go_selection));
+		if (image_options & IMOP_WINTOGO) {
+			// Set the Windows To Go selection in the dropdown
+			IGNORE_RETVAL(ComboBox_SetCurSel(hImageOption, (img_report.is_windows_img || !windows_to_go_selected) ? 0 : 1));
+		}
 	}
 
 	if (((has_persistence) && !(image_options & IMOP_PERSISTENCE)) ||
 		((!has_persistence) && (image_options & IMOP_PERSISTENCE))) {
 		image_options ^= IMOP_PERSISTENCE;
+		if (image_options & IMOP_PERSISTENCE) {
+			SetWindowTextU(GetDlgItem(hMainDialog, IDS_IMAGE_OPTION_TXT), lmprintf(MSG_123));
+			TogglePersistenceControls(persistence_size != 0);
+			SetPersistenceSize();
+		}
 	}
 
 	if ( ((entry_image_options != 0) && (has_wintogo || has_persistence)) ||
@@ -803,15 +825,6 @@ void ToggleImageOptions(void)
 	for (i = 0; i < ARRAYSIZE(image_option_toggle_ids); i++) {
 		ShowWindow(GetDlgItem(hMainDialog, image_option_toggle_ids[i][0]),
 			(image_options & image_option_toggle_ids[i][1]) ? SW_SHOW : SW_HIDE);
-	}
-	// Set the dropdown default selection
-	if (image_options & IMOP_WINTOGO) {
-		SetWindowTextU(GetDlgItem(hMainDialog, IDS_IMAGE_OPTION_TXT), image_option_txt);
-		IGNORE_RETVAL(ComboBox_SetCurSel(GetDlgItem(hMainDialog, IDC_IMAGE_OPTION), windows_to_go_selection));
-	} else if (image_options & IMOP_PERSISTENCE) {
-		SetWindowTextU(GetDlgItem(hMainDialog, IDS_IMAGE_OPTION_TXT), lmprintf(MSG_123));
-		TogglePersistenceControls(persistence_size != 0);
-		SetPersistenceSize();
 	}
 	// If you don't force a redraw here, all kind of bad UI artifacts happen...
 	InvalidateRect(hMainDialog, NULL, TRUE);
@@ -847,6 +860,7 @@ void CreateSmallButtons(HWND hDlg)
 	tbToolbarButtons[0].fsState = TBSTATE_ENABLED;
 	tbToolbarButtons[0].iBitmap = 0;
 	SendMessage(hSaveToolbar, TB_ADDBUTTONS, (WPARAM)1, (LPARAM)&tbToolbarButtons);
+	SetAccessibleName(hSaveToolbar, lmprintf(MSG_313));
 
 	hHashToolbar = CreateWindowEx(0, TOOLBARCLASSNAME, NULL, TOOLBAR_STYLE,
 		0, 0, 0, 0, hMainDialog, (HMENU)IDC_HASH_TOOLBAR, hMainInstance, NULL);
@@ -863,6 +877,7 @@ void CreateSmallButtons(HWND hDlg)
 	tbToolbarButtons[0].fsState = TBSTATE_ENABLED;
 	tbToolbarButtons[0].iBitmap = 0;
 	SendMessage(hHashToolbar, TB_ADDBUTTONS, (WPARAM)1, (LPARAM)&tbToolbarButtons);
+	SetAccessibleName(hHashToolbar, lmprintf(MSG_314));
 }
 
 static INT_PTR CALLBACK ProgressCallback(HWND hCtrl, UINT message, WPARAM wParam, LPARAM lParam)
@@ -1003,13 +1018,16 @@ static INT_PTR CALLBACK ProgressCallback(HWND hCtrl, UINT message, WPARAM wParam
 
 void CreateAdditionalControls(HWND hDlg)
 {
+	int buttons_list[] = { IDC_LANG, IDC_ABOUT, IDC_SETTINGS, IDC_LOG };
+	int bitmaps_list[] = { 0, 1, 2, 3 };
 	HINSTANCE hDll;
 	HIMAGELIST hToolbarImageList;
 	HICON hIcon, hIconUp, hIconDown;
 	RECT rc;
 	SIZE sz;
-	int icon_offset = 0, i, i16, s16, toolbar_dx = -4 - ((fScale > 1.49f) ? 1 : 0) - ((fScale > 1.99f) ? 1 : 0);
-	TBBUTTON tbToolbarButtons[7];
+	int icon_offset = 0, i, i16, s16, size;
+	int toolbar_dx = -4 - ((fScale > 1.49f) ? 1 : 0) - ((fScale > 1.99f) ? 1 : 0);
+	TBBUTTON tbToolbarButtons[ARRAYSIZE(buttons_list) * 2 - 1];
 	unsigned char* buffer;
 	DWORD bufsize;
 
@@ -1064,6 +1082,7 @@ void CreateAdditionalControls(HWND hDlg)
 	if (sz.cx < 16)
 		sz.cx = fw;
 	SetWindowPos(hAdvancedDeviceToolbar, hTargetSystem, rc.left + toolbar_dx, rc.top, sz.cx, rc.bottom - rc.top, 0);
+	SetAccessibleName(hAdvancedDeviceToolbar, lmprintf(MSG_119));
 
 	utf8_to_wchar_no_alloc(lmprintf((advanced_mode_format) ? MSG_122 : MSG_121, lmprintf(MSG_120)), wtbtext[1], ARRAYSIZE(wtbtext[1]));
 	hAdvancedFormatToolbar = CreateWindowEx(0, TOOLBARCLASSNAME, NULL, TOOLBAR_STYLE,
@@ -1084,6 +1103,7 @@ void CreateAdditionalControls(HWND hDlg)
 	if (sz.cx < 16)
 		sz.cx = fw;
 	SetWindowPos(hAdvancedFormatToolbar, hClusterSize, rc.left + toolbar_dx, rc.top, sz.cx, rc.bottom - rc.top, 0);
+	SetAccessibleName(hAdvancedFormatToolbar, lmprintf(MSG_120));
 
 	// Create the multi toolbar
 	hMultiToolbar = CreateWindowEx(0, TOOLBARCLASSNAME, NULL, TOOLBAR_STYLE,
@@ -1102,36 +1122,29 @@ void CreateAdditionalControls(HWND hDlg)
 	SendMessage(hMultiToolbar, TB_SETIMAGELIST, (WPARAM)0, (LPARAM)hToolbarImageList);
 	SendMessage(hMultiToolbar, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
 	memset(tbToolbarButtons, 0, sizeof(TBBUTTON) * ARRAYSIZE(tbToolbarButtons));
-	tbToolbarButtons[0].idCommand = IDC_LANG;
-	tbToolbarButtons[0].fsStyle = BTNS_BUTTON;
-	tbToolbarButtons[0].fsState = TBSTATE_ENABLED;
-	tbToolbarButtons[0].iBitmap = 0;
-	tbToolbarButtons[1].fsStyle = BTNS_AUTOSIZE;
-	tbToolbarButtons[1].fsState = TBSTATE_INDETERMINATE;
-	tbToolbarButtons[1].iBitmap = I_IMAGENONE;
-	tbToolbarButtons[1].iString = (fScale < 1.5f) ? (INT_PTR)L"" : (INT_PTR)L" ";
-	tbToolbarButtons[2].idCommand = IDC_ABOUT;
-	tbToolbarButtons[2].fsStyle = BTNS_BUTTON;
-	tbToolbarButtons[2].fsState = TBSTATE_ENABLED;
-	tbToolbarButtons[2].iBitmap = 1;
-	tbToolbarButtons[3].fsStyle = BTNS_AUTOSIZE;
-	tbToolbarButtons[3].fsState = TBSTATE_INDETERMINATE;
-	tbToolbarButtons[3].iBitmap = I_IMAGENONE;
-	tbToolbarButtons[3].iString = (fScale < 1.5f) ? (INT_PTR)L"" : (INT_PTR)L" ";
-	tbToolbarButtons[4].idCommand = IDC_SETTINGS;
-	tbToolbarButtons[4].fsStyle = BTNS_BUTTON;
-	tbToolbarButtons[4].fsState = TBSTATE_ENABLED;
-	tbToolbarButtons[4].iBitmap = 2;
-	tbToolbarButtons[5].fsStyle = BTNS_AUTOSIZE;
-	tbToolbarButtons[5].fsState = TBSTATE_INDETERMINATE;
-	tbToolbarButtons[5].iBitmap = I_IMAGENONE;
-	tbToolbarButtons[5].iString = (fScale < 1.5f) ? (INT_PTR)L"" : (INT_PTR)L" ";
-	tbToolbarButtons[6].idCommand = IDC_LOG;
-	tbToolbarButtons[6].fsStyle = BTNS_BUTTON;
-	tbToolbarButtons[6].fsState = TBSTATE_ENABLED;
-	tbToolbarButtons[6].iBitmap = 3;
-	SendMessage(hMultiToolbar, TB_ADDBUTTONS, (WPARAM)7, (LPARAM)&tbToolbarButtons);
+	size = 2 * ARRAYSIZE(buttons_list) - 1;
+	if (appstore_version) {
+		// Remove the Update Settings button for the AppStore version
+		buttons_list[2] = buttons_list[3];
+		bitmaps_list[2] = bitmaps_list[3];
+		size -= 2;
+	}
+	for (i = 0; i < size; i++) {
+		if (i % 2 == 0) {
+			tbToolbarButtons[i].idCommand = buttons_list[i / 2];
+			tbToolbarButtons[i].fsStyle = BTNS_BUTTON;
+			tbToolbarButtons[i].fsState = TBSTATE_ENABLED;
+			tbToolbarButtons[i].iBitmap = bitmaps_list[i / 2];
+		} else {
+			tbToolbarButtons[i].fsStyle = BTNS_AUTOSIZE;
+			tbToolbarButtons[i].fsState = TBSTATE_INDETERMINATE;
+			tbToolbarButtons[i].iBitmap = I_IMAGENONE;
+			tbToolbarButtons[i].iString = (fScale < 1.5f) ? (INT_PTR)L"" : (INT_PTR)L" ";
+		}
+	}
+	SendMessage(hMultiToolbar, TB_ADDBUTTONS, (WPARAM)i, (LPARAM)&tbToolbarButtons);
 	SendMessage(hMultiToolbar, TB_SETBUTTONSIZE, 0, MAKELPARAM(i16, ddbh));
+	SetAccessibleName(hMultiToolbar, lmprintf(MSG_315));
 
 	// Subclass the progress bar so that we can write on it
 	progress_original_proc = (WNDPROC)SetWindowLongPtr(hProgress, GWLP_WNDPROC, (LONG_PTR)ProgressCallback);
@@ -1164,21 +1177,21 @@ void InitProgress(BOOL bOnlyFormat)
 				nb_slots[OP_FILE_COPY] = 5 + 1;
 				break;
 			case BT_IMAGE:
-				nb_slots[OP_FILE_COPY] = img_report.is_iso ? -1 : 0;
+				nb_slots[OP_FILE_COPY] = (img_report.is_iso || img_report.is_windows_img) ? -1 : 0;
 				break;
 			default:
 				nb_slots[OP_FILE_COPY] = 2 + 1;
 				break;
 			}
 		}
-		if (selection_default == BT_IMAGE && !img_report.is_iso) {
+		if (selection_default == BT_IMAGE && !(img_report.is_iso || img_report.is_windows_img)) {
 			nb_slots[OP_FORMAT] = -1;
 		} else {
 			nb_slots[OP_ZERO_MBR] = 1;
 			nb_slots[OP_PARTITION] = 1;
 			nb_slots[OP_FIX_MBR] = 1;
 			nb_slots[OP_CREATE_FS] = (use_vds) ? 2 :
-				nb_steps[ComboBox_GetItemData(hFileSystem, ComboBox_GetCurSel(hFileSystem))];
+				nb_steps[ComboBox_GetCurItemData(hFileSystem)];
 			// So, yeah, if you're doing slow format, or using Large FAT32, and have persistence, you'll see
 			// the progress bar revert during format on account that we reuse the same operation for both
 			// partitions. Maybe one day I'll be bothered to handle two separate OP_FORMAT ops...
@@ -1251,7 +1264,7 @@ void UpdateProgress(int op, float percent)
 		pos = (int)((previous_end + ((slot_end[op + 1] - previous_end) * (percent / 100.0f))) / 100.0f * MAX_PROGRESS);
 	}
 	if (pos > MAX_PROGRESS) {
-		duprintf("UpdateProgress(%d): rounding error - pos %d is greater than %d\n", op, pos, MAX_PROGRESS);
+		duprintf("UpdateProgress(%d): rounding error - pos %d is greater than %d", op, pos, MAX_PROGRESS);
 		pos = MAX_PROGRESS;
 	}
 
@@ -1537,11 +1550,11 @@ void ShowLanguageMenu(RECT rcExclude)
 void SetPassesTooltip(void)
 {
 	const unsigned int pattern[BADLOCKS_PATTERN_TYPES][BADBLOCK_PATTERN_COUNT] =
-	{ BADBLOCK_PATTERN_SLC, BADCLOCK_PATTERN_MLC, BADBLOCK_PATTERN_TLC };
+	{ BADBLOCK_PATTERN_ONE_PASS, BADBLOCK_PATTERN_TWO_PASSES, BADBLOCK_PATTERN_SLC,
+	  BADCLOCK_PATTERN_MLC, BADBLOCK_PATTERN_TLC };
 	int sel = ComboBox_GetCurSel(hNBPasses);
-	int type = (sel < 2) ? 0 : sel - 2;
 	CreateTooltip(hNBPasses, lmprintf(MSG_153 + ((sel >= 2) ? 3 : sel),
-		pattern[type][0], pattern[type][1], pattern[type][2], pattern[type][3]), -1);
+		pattern[sel][0], pattern[sel][1], pattern[sel][2], pattern[sel][3]), -1);
 }
 
 void SetBootTypeDropdownWidth(void)

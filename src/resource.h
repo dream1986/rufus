@@ -86,11 +86,10 @@
 #define IDR_SL_MBOOT_C32                404
 #define IDR_GR_GRUB_GRLDR_MBR           450
 #define IDR_GR_GRUB2_CORE_IMG           451
+#define IDR_SBR_MSG                     452
 #define IDR_LC_RUFUS_LOC                500
 #define IDR_XT_HOGGER                   501
 #define IDR_UEFI_NTFS                   502
-#define IDR_TOGO_SAN_POLICY_XML         503
-#define IDR_TOGO_UNATTEND_XML           504
 #define IDM_SELECT                      901
 #define IDM_DOWNLOAD                    902
 #define IDC_DEVICE                      1001
@@ -157,6 +156,7 @@
 #define IDC_MD5                         1071
 #define IDC_SHA1                        1072
 #define IDC_SHA256                      1073
+#define IDC_SHA512                      1112
 #define IDC_SELECTION_ICON              1074
 #define IDC_SELECTION_TEXT              1075
 #define IDC_SELECTION_LINE              1076
@@ -535,7 +535,37 @@
 #define MSG_318                         3318
 #define MSG_319                         3319
 #define MSG_320                         3320
-#define MSG_MAX                         3321
+#define MSG_321                         3321
+#define MSG_322                         3322
+#define MSG_323                         3323
+#define MSG_324                         3324
+#define MSG_325                         3325
+#define MSG_326                         3326
+#define MSG_327                         3327
+#define MSG_328                         3328
+#define MSG_329                         3329
+#define MSG_330                         3330
+#define MSG_331                         3331
+#define MSG_332                         3332
+#define MSG_333                         3333
+#define MSG_334                         3334
+#define MSG_335                         3335
+#define MSG_336                         3336
+#define MSG_337                         3337
+#define MSG_338                         3338
+#define MSG_339                         3339
+#define MSG_340                         3340
+#define MSG_341                         3341
+#define MSG_342                         3342
+#define MSG_343                         3343
+#define MSG_344                         3344
+#define MSG_345                         3345
+#define MSG_346                         3346
+#define MSG_347                         3347
+#define MSG_348                         3348
+#define MSG_349                         3349
+#define MSG_350                         3350
+#define MSG_MAX                         3351
 
 // Next default values for new objects
 // 

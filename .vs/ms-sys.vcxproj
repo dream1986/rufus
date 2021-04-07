@@ -70,11 +70,11 @@
     <ClInclude Include="..\src\ms-sys\inc\mbr_95b.h" />
     <ClInclude Include="..\src\ms-sys\inc\mbr_dos.h" />
     <ClInclude Include="..\src\ms-sys\inc\mbr_dos_f2.h" />
-    <ClInclude Include="..\src\ms-sys\inc\mbr_gpt_rufus.h" />
     <ClInclude Include="..\src\ms-sys\inc\mbr_gpt_syslinux.h" />
     <ClInclude Include="..\src\ms-sys\inc\mbr_grub.h" />
     <ClInclude Include="..\src\ms-sys\inc\mbr_grub2.h" />
     <ClInclude Include="..\src\ms-sys\inc\mbr_kolibri.h" />
+    <ClInclude Include="..\src\ms-sys\inc\mbr_msg_rufus.h" />
     <ClInclude Include="..\src\ms-sys\inc\mbr_reactos.h" />
     <ClInclude Include="..\src\ms-sys\inc\mbr_rufus.h" />
     <ClInclude Include="..\src\ms-sys\inc\mbr_syslinux.h" />
@@ -123,14 +123,12 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
-    <UseDebugLibraries>false</UseDebugLibraries>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
     <PlatformToolset>v142</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
-    <UseDebugLibraries>false</UseDebugLibraries>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
     <PlatformToolset>v142</PlatformToolset>
@@ -138,7 +136,6 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
-    <UseDebugLibraries>false</UseDebugLibraries>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
     <PlatformToolset>v142</PlatformToolset>
@@ -152,7 +149,6 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
-    <UseDebugLibraries>false</UseDebugLibraries>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
     <PlatformToolset>v142</PlatformToolset>
@@ -253,6 +249,7 @@
       <DisableSpecificWarnings>28252;28253</DisableSpecificWarnings>
       <CompileAs>CompileAsC</CompileAs>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <StringPooling>true</StringPooling>
     </ClCompile>
     <Lib>
       <TargetMachine>MachineX86</TargetMachine>
@@ -271,6 +268,7 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <AdditionalOptions>/analyze:stacksize32850 /utf-8 %(AdditionalOptions)</AdditionalOptions>
       <DisableSpecificWarnings>28252;28253</DisableSpecificWarnings>
+      <StringPooling>true</StringPooling>
     </ClCompile>
     <Lib />
   </ItemDefinitionGroup>
@@ -287,6 +285,7 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <AdditionalOptions>/analyze:stacksize32850 /utf-8 %(AdditionalOptions)</AdditionalOptions>
       <DisableSpecificWarnings>28252;28253</DisableSpecificWarnings>
+      <StringPooling>true</StringPooling>
     </ClCompile>
     <Lib />
   </ItemDefinitionGroup>
@@ -320,6 +319,7 @@
       <DisableSpecificWarnings>28252;28253</DisableSpecificWarnings>
       <CompileAs>CompileAsC</CompileAs>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <StringPooling>true</StringPooling>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>

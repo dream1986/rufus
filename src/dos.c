@@ -2,7 +2,7 @@
  * Rufus: The Reliable USB Formatting Utility
  * DOS boot file extraction, from the FAT12 floppy image in diskcopy.dll
  * (MS WinME DOS) or from the embedded FreeDOS resource files
- * Copyright © 2011-2017 Pete Batard <pete@akeo.ie>
+ * Copyright © 2011-2020 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -317,6 +317,7 @@ static BOOL ExtractMSDOS(const char* path)
 		goto out;
 	}
 
+	DiskImageSize = 0;
 	DiskImage = (BYTE*)GetResource(hDLL, MAKEINTRESOURCEA(1), "BINFILE", "disk image", &DiskImageSize, TRUE);
 	if (DiskImage == NULL)
 		goto out;
@@ -413,7 +414,7 @@ BOOL ExtractFreeDOS(const char* path)
 
 BOOL ExtractDOS(const char* path)
 {
-	switch(ComboBox_GetItemData(hBootType, ComboBox_GetCurSel(hBootType))) {
+	switch(ComboBox_GetCurItemData(hBootType)) {
 	case BT_MSDOS:
 		return ExtractMSDOS(path);
 	case BT_FREEDOS:

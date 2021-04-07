@@ -189,6 +189,7 @@ pdfdir = @pdfdir@
 prefix = @prefix@
 program_transform_name = @program_transform_name@
 psdir = @psdir@
+runstatedir = @runstatedir@
 sbindir = @sbindir@
 sharedstatedir = @sharedstatedir@
 srcdir = @srcdir@
@@ -367,7 +368,7 @@ uninstall-am:
 all-local: embedded.loc
 
 embedded.loc: rufus.loc
-	$(AM_V_SED) -f embedded.sed $< > $@
+	$(AM_V_SED) -f $(srcdir)/embedded.sed $< > $@
 
 clean-local:
 	-rm -rf embedded.loc

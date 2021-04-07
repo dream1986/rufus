@@ -1,7 +1,7 @@
 /*
  * Rufus: The Reliable USB Formatting Utility
  * Device detection and enumeration
- * Copyright © 2014-2019 Pete Batard <pete@akeo.ie>
+ * Copyright © 2014-2021 Pete Batard <pete@akeo.ie>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -46,7 +46,8 @@
 
 extern StrArray DriveId, DriveName, DriveLabel, DriveHub;
 extern uint32_t DrivePort[MAX_DRIVES];
-extern BOOL enable_HDDs, use_fake_units, enable_vmdk, usb_debug, list_non_usb_removable_drives, is_me;
+extern BOOL enable_HDDs, enable_VHDs, use_fake_units, enable_vmdk, usb_debug;
+extern BOOL list_non_usb_removable_drives, its_a_me_mario;
 
 /*
  * Get the VID, PID and current device speed
@@ -181,7 +182,7 @@ out:
 /*
  * Forces a refresh by disabling and then re-enabling the device using SetupAPI.
  * Returns the Windows error code from the operation.
- * Note: Currently, this may leave the device disabled after re-plug or reboot...
+ * Note: In some circumstances, this may leave the device disabled after re-plug or reboot...
  */
 int CycleDevice(int index)
 {
@@ -226,7 +227,7 @@ int CycleDevice(int index)
 			memset(&propchange_params, 0, sizeof(propchange_params));
 			propchange_params.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
 			propchange_params.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
-			propchange_params.Scope = DICS_FLAG_GLOBAL;
+			propchange_params.Scope = DICS_FLAG_CONFIGSPECIFIC;
 			propchange_params.StateChange = DICS_DISABLE;
 
 			if (!SetupDiSetClassInstallParams(dev_info, &dev_info_data,
@@ -247,7 +248,7 @@ int CycleDevice(int index)
 		memset(&propchange_params, 0, sizeof(propchange_params));
 		propchange_params.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
 		propchange_params.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
-		propchange_params.Scope = DICS_FLAG_GLOBAL;
+		propchange_params.Scope = DICS_FLAG_CONFIGSPECIFIC;
 		propchange_params.StateChange = DICS_ENABLE;
 		if (!SetupDiSetClassInstallParams(dev_info, &dev_info_data,
 			(SP_CLASSINSTALL_HEADER*)&propchange_params, sizeof(propchange_params))) {
@@ -418,9 +419,9 @@ BOOL GetOpticalMedia(IMG_SAVE* img_save)
 /* For debugging user reports of HDDs vs UFDs */
 //#define FORCED_DEVICE
 #ifdef FORCED_DEVICE
-#define FORCED_VID 0x05AC
-#define FORCED_PID 0x8406
-#define FORCED_NAME "APPLE SD Card Reader USB Device"
+#define FORCED_VID 0x0BDA
+#define FORCED_PID 0x0306
+#define FORCED_NAME "SDXC Card"
 #endif
 
 /*
@@ -781,9 +782,13 @@ BOOL GetDevices(DWORD devnum)
 				}
 				static_strcpy(str, "????:????");	// Couldn't figure VID:PID
 			} else {
-				// because I don't want to end up erasing this specific device of mine by accident
-				if (is_me && (props.vid == 0x0525) && (props.pid == 0x622b))
-					continue;
+				// I *REALLY* don't want to erase the devices below by accident.
+				if (its_a_me_mario) {
+					if ((props.vid == 0x0525) && (props.pid == 0x622b))
+						continue;
+					if ((props.vid == 0x0781) && (props.pid == 0x75a0))
+						continue;
+				}
 				static_sprintf(str, "%04X:%04X", props.vid, props.pid);
 			}
 			if (props.speed >= USB_SPEED_MAX)
@@ -794,10 +799,8 @@ BOOL GetDevices(DWORD devnum)
 				uprintf("NOTE: This device is a USB 3.%c device operating at lower speed...", '0' + props.lower_speed - 1);
 		}
 		devint_data.cbSize = sizeof(devint_data);
-		hDrive = INVALID_HANDLE_VALUE;
 		devint_detail_data = NULL;
-		for (j=0; ;j++) {
-			safe_closehandle(hDrive);
+		for (j = 0; ; j++) {
 			safe_free(devint_detail_data);
 
 			if (!SetupDiEnumDeviceInterfaces(dev_info, &dev_info_data, &GUID_DEVINTERFACE_DISK, j, &devint_data)) {
@@ -839,19 +842,18 @@ BOOL GetDevices(DWORD devnum)
 			}
 
 			drive_number = GetDriveNumber(hDrive, devint_detail_data->DevicePath);
+			CloseHandle(hDrive);
 			if (drive_number < 0)
 				continue;
 
 			drive_index = drive_number + DRIVE_INDEX_MIN;
 			if (!IsMediaPresent(drive_index)) {
 				uprintf("Device eliminated because it appears to contain no media");
-				safe_closehandle(hDrive);
 				safe_free(devint_detail_data);
 				break;
 			}
 			if (GetDriveSize(drive_index) < (MIN_DRIVE_SIZE*MB)) {
 				uprintf("Device eliminated because it is smaller than %d MB", MIN_DRIVE_SIZE);
-				safe_closehandle(hDrive);
 				safe_free(devint_detail_data);
 				break;
 			}
@@ -861,7 +863,6 @@ BOOL GetDevices(DWORD devnum)
 					if (!props.is_Removable) {
 						// Non removables should have been eliminated above, but since we
 						// are potentially dealing with system drives, better safe than sorry
-						safe_closehandle(hDrive);
 						safe_free(devint_detail_data);
 						break;
 					}
@@ -875,7 +876,6 @@ BOOL GetDevices(DWORD devnum)
 						}
 						if (*p) {
 							uprintf("Device eliminated because it contains a mounted partition that is set as non-removable");
-							safe_closehandle(hDrive);
 							safe_free(devint_detail_data);
 							break;
 						}
@@ -887,14 +887,17 @@ BOOL GetDevices(DWORD devnum)
 					if (!list_non_usb_removable_drives)
 						uprintf("If this device is not a Hard Drive, please e-mail the author of this application");
 					uprintf("NOTE: You can enable the listing of Hard Drives under 'advanced drive properties'");
-					safe_closehandle(hDrive);
 					safe_free(devint_detail_data);
 					break;
 				}
 				// Windows 10 19H1 mounts a 'PortableBaseLayer' for its Windows Sandbox feature => unlist those
 				if (safe_strcmp(label, windows_sandbox_vhd_label) == 0) {
-					uprintf("Device eliminated because it's a Windows Sandbox VHD");
-					safe_closehandle(hDrive);
+					uprintf("Device eliminated because it is a Windows Sandbox VHD");
+					safe_free(devint_detail_data);
+					break;
+				}
+				if (props.is_VHD && (!enable_VHDs)) {
+					uprintf("Device eliminated because listing of VHDs is disabled (Alt-G)");
 					safe_free(devint_detail_data);
 					break;
 				}
@@ -932,7 +935,6 @@ BOOL GetDevices(DWORD devnum)
 					if (remove_drive) {
 						uprintf("Removing %C: from the list: This is the %s!", drive_letters[--k],
 							(remove_drive==1)?"disk from which " APPLICATION_NAME " is running":"system disk");
-						safe_closehandle(hDrive);
 						safe_free(devint_detail_data);
 						break;
 					}
@@ -950,7 +952,6 @@ BOOL GetDevices(DWORD devnum)
 
 				IGNORE_RETVAL(ComboBox_SetItemData(hDeviceList, ComboBox_AddStringU(hDeviceList, entry), drive_index));
 				maxwidth = max(maxwidth, GetEntryWidth(hDeviceList, entry));
-				safe_closehandle(hDrive);
 				safe_free(devint_detail_data);
 				break;
 			}
